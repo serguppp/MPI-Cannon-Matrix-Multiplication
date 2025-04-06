@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "*.embeddedhtml": "html",
+        "*.php": "php",
+        "*.md": "bat",
+        "time.h": "c",
+        "stdlib.h": "c",
+        "xstring": "c"
+    }
+}
