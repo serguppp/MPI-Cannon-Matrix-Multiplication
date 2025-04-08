@@ -19,8 +19,8 @@ int main(int argc, char **argv) {
 
     printf("Pliki otwarte poprawnie, zapisuje dane\n");
 
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < 3; j++){
+    for (i = 0; i < 4; i++) {
+        for (j = 0; j < 4; j++){
             fprintf(plik, "%6.1f ", (float)i + j);
             fprintf(plik2, "%6.1f ", (float)i + j);
         }
