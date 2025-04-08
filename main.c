@@ -6,14 +6,15 @@
 #include <string.h>
 
 #define N 4 // Rozmiar macierzy
-#define PP 4    // Pierwiastek z liczby procesów
-#define P 16     // Liczba procesów
+#define PP 2   // Pierwiastek z liczby procesów
+#define P 4   // Liczba procesów
 
 float rawA[N][N], rawB[N][N]; // Macierze A i B z pliku
 float distrA[N][N], distrB[N][N]; //Macierze A i B po poczatkowej dystrybucji
 
 float a[N / PP][N / PP], b[N / PP][N / PP], c[N / PP][N / PP]; 
 float aa[N / PP][N / PP], bb[N / PP][N / PP]; 
+
 float(*psa)[N / PP], (*psb)[N / PP], (*pra)[N / PP], (*prb)[N / PP];
 
 float CSek[N][N], Cglob[N][N];  
@@ -67,33 +68,34 @@ void printMatrix(float matrix[N][N], int rows, int cols) {
 
 // Funkcja zajmująca się wstępną inicjalizacją macierzy
 void initMatrix(){
-    float tmpA[N][N];
-    float tmpB[N][N];
     int new_j_A;
     int new_i_B;
-
-    memcpy(tmpA, rawA, sizeof(rawA));  // Kopiowanie całej tablicy A do tmpA
-    memcpy(tmpB, rawB, sizeof(rawB));  // Kopiowanie całej tablicy A do tmpA
-
     for (int i = 0; i<N; i++){
         for (int j=0; j<N; j++){
             new_j_A = (j - i + N) % N;
             new_i_B = (i - j + N) % N;            
-            distrA[i][new_j_A] = tmpA[i][j];
-            distrB[new_i_B][j] = tmpB[i][j];
+            distrA[i][new_j_A] = rawA[i][j];
+            distrB[new_i_B][j] = rawB[i][j];
         }
     }
-
 }
 
 void initC(){
-    int i = rank % N; // kolumna w siatce procesów
-    int j = rank / N; // wiersz w siatce procesów
-
     for (int i = 0; i < N / PP; i++)
         for (int j = 0; j < N / PP; j++)
              c[i][j] = 0;
     //printf("Utworzono tablice C\n");
+}
+
+// Funkcja wypisująca blok procesów dla macierzy a, b i c
+void printBlock(float matrix[N / PP][N / PP], const char* name) {
+    printf("Proces %d, Macierz %s:\n", rank, name);
+    for (int i = 0; i < N / PP; i++) {
+        for (int j = 0; j < N / PP; j++) {
+            printf("%f ", matrix[i][j]);
+        }
+        printf("\n");
+    }
 }
 
 int main(int argc, char** argv) {
@@ -112,6 +114,8 @@ int main(int argc, char** argv) {
 
     MPI_Status statSend[4], statRecv[4];
     MPI_Request reqSend[4], reqRecv[4];
+    MPI_Comm cartComm;
+
 
     //Sprawdzamy, czy liczba uruchomionych procesów MPI (np) jest zgodna z oczekiwaną liczbą procesów (P)
     // i wykonuje odpowiednią akcję, jeśli liczba procesów jest nieprawidłowa.
@@ -144,10 +148,6 @@ int main(int argc, char** argv) {
             loadMatrix(&fileA, pathA, 'A');
             loadMatrix(&fileB, pathB, 'B');
 
-            printf("Macierz A: \n");
-            printMatrix(rawA, N, N);
-            printf("Macierz B: \n");
-            printMatrix(rawB, N, N);
 
             // Wstępna dystrybucja macierzy
             initMatrix();
@@ -172,8 +172,6 @@ int main(int argc, char** argv) {
 
                 // Wysłanie bloków do procesów
                 if (p != 0){
-                    //MPI_Send(&subA, (N / PP) * (N / PP), MPI_FLOAT, p, 0, MPI_COMM_WORLD);
-                    //MPI_Send(&subB, (N / PP) * (N / PP), MPI_FLOAT, p, 1, MPI_COMM_WORLD);
                     MPI_Isend(subA, N * N / PP / PP, MPI_FLOAT, p, tag, MPI_COMM_WORLD, &reqSend[0]);
                     MPI_Isend(subB, N * N / PP / PP, MPI_FLOAT, p, tag, MPI_COMM_WORLD, &reqSend[1]);
                 }
@@ -183,8 +181,6 @@ int main(int argc, char** argv) {
                     memcpy(b, subB, sizeof(subB));
                 }
             }
-
-
     } else {
         // Procesy różne od rank=0 odbierają tablicę a i b
         MPI_Irecv(a, N * N / PP / PP, MPI_FLOAT, 0, tag, MPI_COMM_WORLD, &reqRecv[0]);
@@ -202,13 +198,13 @@ int main(int argc, char** argv) {
     initC();
 
     if (rank == 0) startwtime2 = MPI_Wtime();
-
     //Algorytm Cannona
     pra = aa; prb = bb; psa = a; psb = b;
-    for (int kk = 0; kk < PP; kk++) {
+    
+    for (int kk = 0; kk < PP; kk++) {   
         for (int i = 0; i < N / PP; i++)
-            for (int k = 0; k < N / PP; k++)
-                for (int j = 0; j < N / PP; j++)
+            for (int j = 0; j < N / PP; j++)
+                for (int k = 0; k < N / PP; k++)
                     c[i][j] += psa[i][k] * psb[k][j];
 
         int left = ((col - 1 + PP) % PP) + row * PP;
@@ -218,7 +214,7 @@ int main(int argc, char** argv) {
 
         MPI_Irecv(pra, N * N / PP / PP, MPI_FLOAT, right, tag, MPI_COMM_WORLD, &reqRecv[2]); 
         MPI_Irecv(prb, N * N / PP / PP, MPI_FLOAT, down, tag, MPI_COMM_WORLD, &reqRecv[3]);
-        
+    
         MPI_Isend(psa, N * N / PP / PP, MPI_FLOAT, left, tag, MPI_COMM_WORLD, &reqSend[2]);
         MPI_Isend(psb, N * N / PP / PP, MPI_FLOAT, up, tag, MPI_COMM_WORLD, &reqSend[3]);
 
@@ -231,16 +227,17 @@ int main(int argc, char** argv) {
 
         mod = (mod + 1) % 2; // Zmiana wartości mod przed warunkiem
 
-        if (mod == 1) {  // Poprawne porównanie
+        if (mod == 1) {  
             pra = a; prb = b; psa = aa; psb = bb;
         } else {
             pra = aa; prb = bb; psa = a; psb = b;
         }
+
     }
 
     MPI_Gather(c, N * N / P, MPI_FLOAT, Cglob, N * N / P, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-    printf("Ukonczono mnozenie macierzy dla rank %d\n", rank);
+    //printf("Ukonczono mnozenie macierzy dla rank %d\n", rank);
     //Koniec zliczania czasow
     if (rank == 0) {
         endwtime = MPI_Wtime();
@@ -249,9 +246,7 @@ int main(int argc, char** argv) {
     }
 
     //Test poprawności wyników:
-
     if (rank == 0) {
-
         printf("Macierz A do sek: \n");
         printMatrix(rawA, N, N);
         printf("Macierz B do sek: \n");
@@ -268,13 +263,11 @@ int main(int argc, char** argv) {
         // Odbiór wyników obliczeń równoległych do globalnej tablicy wynikowej Cglob
         // Rozesłanie wyników do procesów (w razie potrzeby)
         // Porównanie poprawności obliczeń (Csek, Cglob) przy uwzględnieniu progu poprawności
-
-
         int errors = 0;
         for (int i = 0; i < N; i++) {
             for (int j = 0; j < N; j++) {
                 if (fabs(CSek[i][j] - Cglob[i][j]) > 1e-6) {
-                    printf("Błąd na pozycji (%d, %d): Csek = %f, Cglob = %f\n", i, j, CSek[i][j], Cglob[i][j]);
+                    //printf("Błąd na pozycji (%d, %d): Csek = %f, Cglob = %f\n", i, j, CSek[i][j], Cglob[i][j]);
                     errors++;
                 }
             }

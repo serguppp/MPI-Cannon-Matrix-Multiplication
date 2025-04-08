@@ -5,6 +5,8 @@
         "*.md": "bat",
         "time.h": "c",
         "stdlib.h": "c",
-        "xstring": "c"
+        "xstring": "c",
+        "stdio.h": "c",
+        "string.h": "c"
     }
 }
