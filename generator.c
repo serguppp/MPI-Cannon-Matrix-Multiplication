@@ -1,15 +1,18 @@
+#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 int main(int argc, char **argv) {
+    MPI_Init(&argc, &argv);
+
     FILE *plik, *plik2;
     int i, j;
 
     // Określenie ścieżki w zależności od systemu operacyjnego
     // Info: ze względu na bug kompilatora nie mogę zrobić ścieżki relatywnej, więc póki co jest tylko dla mnie
     #ifdef _WIN32  // Windows
-        const char *path1 = "C:/Users/sergi/Desktop/mpi_projekt/matrix1.txt";
-        const char *path2 = "C:/Users/sergi/Desktop/mpi_projekt/matrix2.txt";
+        const char *path1 = "matrix1.txt";
+        const char *path2 = "matrix2.txt";
     #else  // Linux
         const char *path1 = "./matrix1.txt";
         const char *path2 = "./matrix2.txt";
@@ -44,6 +47,8 @@ int main(int argc, char **argv) {
     fclose(plik);
     fclose(plik2);
     printf("Pliki zostały zapisane i zamknięte poprawnie\n");
+
+    MPI_Finalize();
 
     return 0;
 }
