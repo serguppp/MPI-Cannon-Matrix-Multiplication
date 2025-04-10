@@ -5,62 +5,82 @@
 #include <math.h>
 #include <string.h>
 
-#define N 180 // Rozmiar macierzy
-#define PP 6// Pierwiastek z liczby procesów
-#define P 36// Liczba procesów
+#define N 592 // Rozmiar macierzy
+#define PP 4// Pierwiastek z liczby procesów
+#define P 16// Liczba procesów
 
-float rawA[N][N], rawB[N][N]; // Macierze A i B z pliku
-float distrA[N][N], distrB[N][N]; //Macierze A i B po poczatkowej dystrybucji
+// Macierze A i B wczytane przez proces 0
+double rawA[N][N], rawB[N][N];
+// Macierze A i B po poczatkowej dystrybucji (przesunięciu) obliczone przez proces 0
+double distrA[N][N], distrB[N][N];
 
-float a[N / PP][N / PP], b[N / PP][N / PP], c[N / PP][N / PP]; 
-float aa[N / PP][N / PP], bb[N / PP][N / PP]; 
+// Lokalne bloki macierzy dla każdego procesu
+double a[N / PP][N / PP], b[N / PP][N / PP], c[N / PP][N / PP];
+// Bufory pomocnicze do odbierania danych w pętli Cannona
+double aa[N / PP][N / PP], bb[N / PP][N / PP];
 
-float(*psa)[N / PP], (*psb)[N / PP], (*pra)[N / PP], (*prb)[N / PP];
+// Wskaźniki do buforów wysyłania/odbierania w pętli Cannona
+double(*psa)[N / PP], (*psb)[N / PP], (*pra)[N / PP], (*prb)[N / PP];
 
-float CSek[N][N], Cglob[N][N];  
+// Macierz wynikowa obliczona sekwencyjnie (dla weryfikacji)
+double CSek[N][N];
+// Globalna macierz wynikowa zbierana w procesie 0
+double Cglob[N][N];
 
-int rank, np, koniec;
+int rank, np, koniec; // Zmienna 'koniec' do obsługi błędów plików
 
 double startwtime1, startwtime2, endwtime;
 
-//Wczytywanie plików
+// Funkcja wczytywania plików 
 void loadFile(FILE **file, const char *path) {
-    //printf("Proces %d sprawdza obecność pliku tekstowego z danymi: %s\n", rank, path);
-    *file = fopen(path, "r"); 
-    if (*file == NULL) {
-        //printf("Proces %d wskazuje błąd otwarcia pliku \"%s\"\n", rank, path);
-        koniec = 1;
-        MPI_Bcast(&koniec, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (rank == 0) { // Tylko proces 0 otwiera pliki
+        *file = fopen(path, "r");
+        if (*file == NULL) {
+            perror("Błąd otwarcia pliku");
+            koniec = 1; // Ustaw flagę błędu
+        } else {
+            printf("Proces 0 poprawnie otworzył plik \"%s\"\n", path);
+            koniec = 0; // Brak błędu
+        }
+    }
+    // Rozgłoś status otwarcia pliku do wszystkich procesów
+    MPI_Bcast(&koniec, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (koniec == 1) { // Jeśli był błąd, zakończ
+        if (rank == 0) printf("Zakończenie programu z powodu błędu pliku.\n");
         MPI_Finalize();
-        exit(0);
-    } else {
-       // printf("Proces %d poprawnie otworzył plik \"%s\"\n", rank, path);
-        koniec = 0;
-        MPI_Bcast(&koniec, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        exit(EXIT_FAILURE);
     }
 }
 
-void loadMatrix(FILE **file, const char *path, const char id){
-    //printf("Proces %d odczytuje tablice z pliku \"%s\"\n", rank, path);
-
-    for (int i = 0; i < N; i++)
-        for (int j = 0; j < N; j++) {
-            if (id=='A'){
-                fscanf(*file, "%f", &rawA[i][j]);
-                //printf("Wczytano a[%d][%d] %f\n", i, j, A[i][j]);
+// Funkcja wczytywania danych z pliku do macierzy 
+void loadMatrix(FILE **file, const char *path, const char id) {
+    if (rank == 0) { // Tylko proces 0 wczytuje dane
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < N; j++) {
+                if (id == 'A') {
+                    if (fscanf(*file, "%lf", &rawA[i][j]) != 1) {
+                         fprintf(stderr, "Błąd odczytu danych z pliku %s\n", path);
+                         fclose(*file);
+                         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE); // Zakończ wszystkie procesy
+                    }
+                } else if (id == 'B') {
+                     if (fscanf(*file, "%lf", &rawB[i][j]) != 1) {
+                         fprintf(stderr, "Błąd odczytu danych z pliku %s\n", path);
+                         fclose(*file);
+                         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE); // Zakończ wszystkie procesy
+                    }
+                }
             }
-            else if (id=='B'){
-                fscanf(*file, "%f", &rawB[i][j]);
-                //printf("Wczytano b[%d][%d] %f\n", i, j, B[i][j]);
-            }
-
         }
+        fclose(*file); // Zamknij plik po wczytaniu
+    }
 }
-// Funkcja TESTUJĄCAA do wypisywania tablicy 
-void printMatrix(float matrix[N][N], int rows, int cols) {
+
+// Funkcja TESTUJĄCA do wypisywania macierzy
+void printMatrix(double matrix[N][N], int rows, int cols) {
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
-            printf("%f ", matrix[i][j]); 
+            printf("%6.1f ", matrix[i][j]);
         }
         printf("\n");
     }
@@ -71,7 +91,7 @@ void printMatrix(float matrix[N][N], int rows, int cols) {
 void initMatrix() {
     int blockSize = N / PP; // Rozmiar jednego bloku
 
-    float tempA[N][N], tempB[N][N]; // Bufory pomocnicze do przesunięć bloków
+    double tempA[N][N], tempB[N][N]; // Bufory pomocnicze do przesunięć bloków
 
     // Kopiujemy początkowe dane do buforów
     memcpy(tempA, rawA, sizeof(tempA));
@@ -81,30 +101,30 @@ void initMatrix() {
     for (int blockRow = 0; blockRow < PP; blockRow++) { 
         for (int blockCol = 0; blockCol < PP; blockCol++) { 
             // Obliczamy nowe indeksy bloków po przesunięciu
-            int newColA = (blockCol - blockRow + PP) % PP; // A przesuwamy w lewo o `blockRow`
-            int newRowB = (blockRow - blockCol + PP) % PP; // B przesuwamy w górę o `blockCol`
+            int newColA = (blockCol - blockRow + PP) % PP; // A przesuwamy w lewo o blockRow
+            int newRowB = (blockRow - blockCol + PP) % PP; // B przesuwamy w górę o blockCol
 
             // Kopiujemy **całe bloki**
             for (int i = 0; i < blockSize; i++) {
                 memcpy(
-                    distrA[blockRow * blockSize + i] + newColA * blockSize, 
-                    tempA[blockRow * blockSize + i] + blockCol * blockSize, 
-                    blockSize * sizeof(float)
+                    &distrA[blockRow * blockSize + i][newColA * blockSize], // Miejsce docelowe w distrA
+                    &tempA[blockRow * blockSize + i][blockCol * blockSize], // Źródło w tempA
+                    blockSize * sizeof(double) // Kopiuj cały wiersz bloku
                 );
 
                 memcpy(
-                    distrB[newRowB * blockSize + i] + blockCol * blockSize, 
-                    tempB[blockRow * blockSize + i] + blockCol * blockSize, 
-                    blockSize * sizeof(float)
+                    &distrB[newRowB * blockSize + i][blockCol * blockSize], 
+                    &tempB[blockRow * blockSize + i][blockCol * blockSize], 
+                    blockSize * sizeof(double)
                 );
             }
         }
     }
+    
 }
 
-
 // Funkcja wypisująca blok procesów dla macierzy a, b i c
-void printBlock(float matrix[N / PP][N / PP], const char* name) {
+void printBlock(double matrix[N / PP][N / PP], const char* name) {
     printf("Proces %d, Macierz %s:\n", rank, name);
     for (int i = 0; i < N / PP; i++) {
         for (int j = 0; j < N / PP; j++) {
@@ -119,13 +139,15 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &np);
 
-    FILE *fileA, *fileB;
-    const char *pathA = "matrix1.txt";
+    FILE *fileA = NULL, *fileB = NULL;
+    const char *pathA = "matrix1.txt"; 
     const char *pathB = "matrix2.txt";
-    int row = rank / PP;
-    int col = rank % PP;
+    int row = rank / PP; // Wiersz procesu w siatce PPxPP
+    int col = rank % PP; // Kolumna procesu w siatce PPxPP
     int mod = 0;
-    int tag = 101;
+    int tag = 101; // Tag dla wiadomości MPI
+    int blockSize = N / PP; // Rozmiar boku bloku lokalnego
+    int localSize = blockSize * blockSize; // Liczba elementów w bloku lokalnym
 
     MPI_Status statSend[6], statRecv[6];
     MPI_Request reqSend[6], reqRecv[6];
@@ -160,28 +182,28 @@ int main(int argc, char** argv) {
         printMatrix(distrB,N,N);
         */
 
-        // Rozesłanie tablic do pozostałych procesów
-        // Iterujemy przez wszystkie procesy
+        // Rozesłanie odpowiednich bloków z distrA i distrB do pozostałych procesów
         for (int p = 0; p < P; p++){
-            int row = p % PP; // numer kolumny
-            int col = p / PP; // numer wiersza
+            int row = p % PP; // numer kolumny bloku docelowego
+            int col = p / PP; // numer wiersza bloku docelowego
 
-            float subA[N / PP][N / PP];
-            float subB[N / PP][N / PP];
+           // Tymczasowe bufory na bloki do wysłania/skopiowania
+           double subA[blockSize][blockSize];
+           double subB[blockSize][blockSize];
 
-            // Dla każdego bloku a i b kopiujemy odpowiedni  z A i B:
-            for (int x = 0; x < N/PP; x++){
-                for (int y = 0; y < N/PP; y++){
-                    subA[x][y] = distrA[col * (N / PP) + x][row * (N / PP) + y];
-                    subB[x][y] = distrB[col * (N / PP) + x][row * (N / PP) + y];
+            // Kopiowanie odpowiedniego bloku z przesuniętych macierzy distrA/distrB
+            for (int x = 0; x < blockSize; x++){
+                for (int y = 0; y < blockSize; y++){
+                    subA[x][y] = distrA[col * blockSize + x][row * blockSize + y];
+                    subB[x][y] = distrB[col * blockSize + x][row * blockSize + y];
                 }
             }
-            // Wysłanie bloków do procesów
+            // Wyślłanie bloków do procesów 'p' lub skopiowanie lokalnie dla p=0
             if (p != 0){
-                MPI_Isend(subA, N * N / PP / PP, MPI_FLOAT, p, tag, MPI_COMM_WORLD, &reqSend[0]);
-                MPI_Isend(subB, N * N / PP / PP, MPI_FLOAT, p, tag, MPI_COMM_WORLD, &reqSend[1]);
+                MPI_Send(subA, localSize, MPI_DOUBLE, p, tag, MPI_COMM_WORLD);
+                MPI_Send(subB, localSize, MPI_DOUBLE, p, tag + 1, MPI_COMM_WORLD); // Użyj innego tagu dla B
             }
-            // proces 0 zapisuje swój fragment do lokalnych a i b, zamiast go wysyłać.
+            // Proces 0 kopiuje swoje bloki bezpośrednio
             else{
                 memcpy(a, subA, sizeof(subA));
                 memcpy(b, subB, sizeof(subB));
@@ -189,81 +211,94 @@ int main(int argc, char** argv) {
             //printf("Proces %d dostanie\n", p);
             //printBlock(subA,"subA");
             //printBlock(subB,"subB");
-
         }
     } else {
         // Procesy różne od rank=0 odbierają tablicę a i b
-        MPI_Irecv(a, N * N / PP / PP, MPI_FLOAT, 0, tag, MPI_COMM_WORLD, &reqRecv[0]);
-        MPI_Irecv(b, N * N / PP / PP, MPI_FLOAT, 0, tag, MPI_COMM_WORLD, &reqRecv[1]);
-        
-        MPI_Wait(&reqRecv[0], MPI_STATUS_IGNORE);
-        MPI_Wait(&reqRecv[1], MPI_STATUS_IGNORE);
+        MPI_Recv(a, localSize, MPI_DOUBLE, 0, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(b, localSize, MPI_DOUBLE, 0, tag + 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
 
 
-    //wstepna dystrybucja tablic a i b
-    //Zerowanie tablic aa i bb  i wynikowej  
+    // Zerowanie macierzy pomocniczych i wynikowej 
     memset(aa, 0, sizeof(aa));
     memset(bb, 0, sizeof(bb));
     memset(c, 0, sizeof(c));
 
+    // Bariera przed rozpoczęciem obliczeń - upewnia się, że wszystkie dane są na miejscu
+    MPI_Barrier(MPI_COMM_WORLD);
+
     if (rank == 0) startwtime2 = MPI_Wtime();
+
     //Algorytm Cannona
-    pra = aa; prb = bb; psa = a; psb = b;
+
+    pra = aa; prb = bb; // Bufory odbiorcze
+    psa = a; psb = b;   // Bufory do wysłania (początkowo)
     
     for (int kk = 0; kk < PP; kk++) {   
-        for (int i = 0; i < N / PP; i++)
-            for (int j = 0; j < N / PP; j++)
-                for (int k = 0; k < N / PP; k++)
+        // Krok 1: Mnożenie lokalnych bloków
+        for (int i = 0; i < blockSize; i++)
+            for (int j = 0; j < blockSize; j++)
+                for (int k = 0; k < blockSize; k++)
                     c[i][j] += psa[i][k] * psb[k][j];
 
-        int left = ((rank % PP) - 1 + PP) % PP + (rank / PP) * PP;
-        int right = ((rank % PP) + 1) % PP + (rank / PP) * PP;
-        int up = ((rank / PP) - 1 + PP) % PP * PP + (rank % PP);
-        int down = ((rank / PP) + 1) % PP * PP + (rank % PP);
+        // Krok 2: Przesunięcie bloków (komunikacja)
+        int left = (col - 1 + PP) % PP + row * PP; 
+        int right = (col + 1) % PP + row * PP;
+        int up = col + ((row - 1 + PP) % PP) * PP;
+        int down = col + ((row + 1) % PP) * PP;
+        
+        // Wyślij obecny blok A w lewo, odbierz nowy z prawej do bufora odbiorczego A (pra)
+        MPI_Sendrecv(psa, localSize, MPI_DOUBLE, left, tag,
+            pra, localSize, MPI_DOUBLE, right, tag,
+            MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-        MPI_Irecv(pra, N * N / PP / PP, MPI_FLOAT, right, tag, MPI_COMM_WORLD, &reqRecv[2]); 
-        MPI_Irecv(prb, N * N / PP / PP, MPI_FLOAT, down, tag, MPI_COMM_WORLD, &reqRecv[3]);
-    
-        MPI_Isend(psa, N * N / PP / PP, MPI_FLOAT, left, tag, MPI_COMM_WORLD, &reqSend[2]);
-        MPI_Isend(psb, N * N / PP / PP, MPI_FLOAT, up, tag, MPI_COMM_WORLD, &reqSend[3]);
+        // Wyślij obecny blok B w górę, odbierz nowy z dołu do bufora odbiorczego B (prb)
+        MPI_Sendrecv(psb, localSize, MPI_DOUBLE, up, tag + 1, // Inny tag dla B
+                    prb, localSize, MPI_DOUBLE, down, tag + 1, // Inny tag dla B
+                    MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-        MPI_Wait(&reqSend[2], MPI_STATUS_IGNORE);
-        MPI_Wait(&reqRecv[2], MPI_STATUS_IGNORE);
-        MPI_Wait(&reqSend[3], MPI_STATUS_IGNORE);
-        MPI_Wait(&reqRecv[3], MPI_STATUS_IGNORE);
-
-        mod = (mod + 1) % 2; // Zmiana wartości mod przed warunkiem
-
-        if (mod == 1) {  
-            pra = a; prb = b; psa = aa; psb = bb;
-        } else {
-            pra = aa; prb = bb; psa = a; psb = b;
-        }
+        // Krok 3: Zamiana wskaźników buforów 
+        // Teraz odebrane bloki (w pra, prb) stają się blokami do wysłania (psa, psb) w następnej iteracji
+        // a bloki, które właśnie wysłaliśmy (w psa, psb) stają się buforami odbiorczymi (pra, prb)
+        double(*temp_ptr)[N / PP];
+        temp_ptr = psa; psa = pra; pra = temp_ptr;
+        temp_ptr = psb; psb = prb; prb = temp_ptr;
 
     }
 
-    MPI_Gather(c, N * N / P, MPI_FLOAT, Cglob, N * N / P, MPI_FLOAT, 0, MPI_COMM_WORLD);
+    // Zbieranie wyników do procesu 0 
+    // Uwaga: Cglob jest [N][N], ale MPI_Gather oczekuje liniowego bufora.
+    // Można zbierać do tymczasowego bufora liniowego lub bezpośrednio do Cglob traktując go jak liniowy.
+    MPI_Gather(c, localSize, MPI_DOUBLE,       // Dane wysyłane: lokalny blok c
+        Cglob, localSize, MPI_DOUBLE,          // Dane odbierane: globalna macierz Cglob (traktowana liniowo)
+        0, MPI_COMM_WORLD);                   // Odbiera tylko proces 0
 
+    // Proces 0 rekonstruuje macierz Cglob z zebranych bloków
     if (rank == 0) {
-        float Ctemp[N][N]; // Bufor tymczasowy
-        int blockSize = N / PP;
-        
+        double Ctemp[N][N]; // Bufor tymczasowy na poprawnie ułożoną macierz
+        int current_pos = 0; // Pozycja w liniowym buforze Cglob
+
         for (int p = 0; p < P; p++) {
-            int row = p / PP;  // Wiersz bloku
-            int col = p % PP;  // Kolumna bloku
-            
-            for (int i = 0; i < blockSize; i++) {
-                for (int j = 0; j < blockSize; j++) {
-                    Ctemp[row * blockSize + i][col * blockSize + j] = ((float*)Cglob)[p * blockSize * blockSize + i * blockSize + j];
+            // Oblicz współrzędne bloku (proc_row, proc_col) dla procesu 'p'
+            int proc_row = p / PP;
+            int proc_col = p % PP;
+
+            // Skopiuj dane z liniowego Cglob do Ctemp w odpowiednie miejsce
+            for (int i = 0; i < blockSize; i++) { // i - wiersz wewnątrz bloku
+                for (int j = 0; j < blockSize; j++) { // j - kolumna wewnątrz bloku
+                    int global_row = proc_row * blockSize + i;
+                    int global_col = proc_col * blockSize + j;
+                    // Używamy wskaźnika do Cglob traktowanego jako double*
+                    Ctemp[global_row][global_col] = ((double*)Cglob)[current_pos++];
                 }
             }
         }
-    
+        // Skopiuj poprawnie ułożoną macierz z Ctemp do Cglob
         memcpy(Cglob, Ctemp, sizeof(Ctemp));
     }
 
     
+    // Bariera przed zakończeniem pomiaru czasu
     MPI_Barrier(MPI_COMM_WORLD);
 
     //printf("Ukonczono mnozenie macierzy dla rank %d\n", rank);
@@ -272,15 +307,8 @@ int main(int argc, char** argv) {
         endwtime = MPI_Wtime();
         printf("Czas przetwarzania: %f sekund\n", endwtime - startwtime1);
         printf("Czas obliczeń: %f sekund\n", endwtime - startwtime2);
-    }
-
-    //Test poprawności wyników:
-    if (rank == 0) {
-        /*printf("Macierz A do sek: \n");
-        printMatrix(rawA, N, N);
-        printf("Macierz B do sek: \n");
-        printMatrix(rawB, N, N);
-        */
+    
+        // Weryfikacja wyników przez porównanie z obliczeniami sekwencyjnymi
         // Obliczenia sekwencyjne mnożenia tablic CSek=A*B
         for (int i = 0; i < N; i++)
             for (int j = 0; j < N; j++) {
@@ -290,13 +318,12 @@ int main(int argc, char** argv) {
                 }
             }
     
-        // Odbiór wyników obliczeń równoległych do globalnej tablicy wynikowej Cglob
-        // Rozesłanie wyników do procesów (w razie potrzeby)
-        // Porównanie poprawności obliczeń (Csek, Cglob) przy uwzględnieniu progu poprawności
+        // Porównanie wyników Cglob (z MPI) i CSek (sekwencyjnie)
         int errors = 0;
         for (int i = 0; i < N; i++) {
             for (int j = 0; j < N; j++) {
-                if (fabs(CSek[i][j] != Cglob[i][j])>1e-6) {
+                double diff = fabs((double)CSek[i][j] - (double)Cglob[i][j]);
+                if (fabs(CSek[i][j] - Cglob[i][j])>1e-5) {
                     //printf("Błąd na pozycji (%d, %d): Csek = %f, Cglob = %f\n", i, j, CSek[i][j], Cglob[i][j]);
                     errors++;
                 }
@@ -309,12 +336,9 @@ int main(int argc, char** argv) {
         }
 
         //printf("Macierz wynikowa Cglob:\n");
-       // printMatrix(Cglob, N, N);
-       // printf("Macierz wynikowa Csek:\n");
-       // printMatrix(CSek, N, N);
-    }
-
-    if (rank == 0) {
+        // printMatrix(Cglob, N, N);
+        // printf("Macierz wynikowa Csek:\n");
+        // printMatrix(CSek, N, N);
         printf("Program MPI zakończony poprawnie!\n");
     }
 
