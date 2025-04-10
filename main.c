@@ -5,9 +5,9 @@
 #include <math.h>
 #include <string.h>
 
-#define N 592 // Rozmiar macierzy
-#define PP 4// Pierwiastek z liczby procesów
-#define P 16// Liczba procesów
+#define N 2000 // Rozmiar macierzy
+#define PP 2// Pierwiastek z liczby procesów
+#define P 4// Liczba procesów
 
 // Macierze A i B wczytane przez proces 0
 double rawA[N][N], rawB[N][N];
