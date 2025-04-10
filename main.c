@@ -27,7 +27,7 @@ double CSek[N][N];
 // Globalna macierz wynikowa zbierana w procesie 0
 double Cglob[N][N];
 
-int rank, np, koniec; // Zmienna 'koniec' do obsługi błędów plików
+int rank, np, finalize; // Zmienna 'finalize' do obsługi błędów plików
 
 double startwtime1, startwtime2, endwtime;
 
@@ -37,15 +37,15 @@ void loadFile(FILE **file, const char *path) {
         *file = fopen(path, "r");
         if (*file == NULL) {
             perror("Błąd otwarcia pliku");
-            koniec = 1; // Ustaw flagę błędu
+            finalize = 1; // Ustaw flagę błędu
         } else {
             printf("Proces 0 poprawnie otworzył plik \"%s\"\n", path);
-            koniec = 0; // Brak błędu
+            finalize = 0; // Brak błędu
         }
     }
     // Rozgłoś status otwarcia pliku do wszystkich procesów
-    MPI_Bcast(&koniec, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    if (koniec == 1) { // Jeśli był błąd, zakończ
+    MPI_Bcast(&finalize, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (finalize == 1) { // Jeśli był błąd, zakończ
         if (rank == 0) printf("Zakończenie programu z powodu błędu pliku.\n");
         MPI_Finalize();
         exit(EXIT_FAILURE);
@@ -224,9 +224,6 @@ int main(int argc, char** argv) {
     memset(bb, 0, sizeof(bb));
     memset(c, 0, sizeof(c));
 
-    // Bariera przed rozpoczęciem obliczeń - upewnia się, że wszystkie dane są na miejscu
-    MPI_Barrier(MPI_COMM_WORLD);
-
     if (rank == 0) startwtime2 = MPI_Wtime();
 
     //Algorytm Cannona
@@ -297,12 +294,8 @@ int main(int argc, char** argv) {
         memcpy(Cglob, Ctemp, sizeof(Ctemp));
     }
 
-    
-    // Bariera przed zakończeniem pomiaru czasu
-    MPI_Barrier(MPI_COMM_WORLD);
-
     //printf("Ukonczono mnozenie macierzy dla rank %d\n", rank);
-    //Koniec zliczania czasow
+    //finalize zliczania czasow
     if (rank == 0) {
         endwtime = MPI_Wtime();
         printf("Czas przetwarzania: %f sekund\n", endwtime - startwtime1);
