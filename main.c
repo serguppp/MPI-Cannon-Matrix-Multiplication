@@ -6,8 +6,8 @@
 #include <string.h>
 
 #define N 2000 // Rozmiar macierzy
-#define PP 2// Pierwiastek z liczby procesów
-#define P 4// Liczba procesów
+#define PP 5// Pierwiastek z liczby procesów
+#define P 25// Liczba procesów
 
 // Macierze A i B wczytane przez proces 0
 double rawA[N][N], rawB[N][N];
@@ -30,6 +30,7 @@ double Cglob[N][N];
 int rank, np, finalize; // Zmienna 'finalize' do obsługi błędów plików
 
 double startwtime1, startwtime2, endwtime;
+double start_csek, end_csek;
 
 // Funkcja wczytywania plików 
 void loadFile(FILE **file, const char *path) {
@@ -39,7 +40,7 @@ void loadFile(FILE **file, const char *path) {
             perror("Błąd otwarcia pliku");
             finalize = 1; // Ustaw flagę błędu
         } else {
-            printf("Proces 0 poprawnie otworzył plik \"%s\"\n", path);
+            //printf("Proces 0 poprawnie otworzył plik \"%s\"\n", path);
             finalize = 0; // Brak błędu
         }
     }
@@ -163,7 +164,7 @@ int main(int argc, char** argv) {
 
     if (rank == 0)
     {
-        printf("Obliczenia metodą Cannona dla macierzy %d x %d\n", N, N);
+        //printf("Obliczenia metodą Cannona dla macierzy %d x %d\n", N, N);
         startwtime1 = MPI_Wtime();
         // wczytanie danych 
         loadFile(&fileA, pathA);        
@@ -303,14 +304,17 @@ int main(int argc, char** argv) {
     
         // Weryfikacja wyników przez porównanie z obliczeniami sekwencyjnymi
         // Obliczenia sekwencyjne mnożenia tablic CSek=A*B
-        for (int i = 0; i < N; i++)
+        start_csek = MPI_Wtime();
+        for (int i = 0; i < N; i++){
             for (int j = 0; j < N; j++) {
                 CSek[i][j] = 0;
                 for (int k = 0; k < N; k++) {
                     CSek[i][j] += rawA[i][k] * rawB[k][j];
                 }
             }
-    
+        }
+        end_csek = MPI_Wtime();
+        printf("Czas obliczeń Csek: %f sekund\n", end_csek - start_csek);
         // Porównanie wyników Cglob (z MPI) i CSek (sekwencyjnie)
         int errors = 0;
         for (int i = 0; i < N; i++) {
