@@ -29,8 +29,3 @@ Mnożenie macierzy metodą Cannona z użyciem wielu procesorów.
    ```sh
    mpirun -np P main
    ```
-
-## TODO
-- Dynamiczna alokacja tablic.
-- Możliwość ustalania rozmiaru tablic (dla generatora i dla main) oraz liczby procesorów (dla main) z poziomu wiersza poleceń.
-- Uproscic nomenklature zmiennych w initMatrix
