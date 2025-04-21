@@ -9,7 +9,6 @@
 #define PP 5   // Pierwiastek z liczby procesów
 #define P 25   // Liczba procesów
 
-
 // --- Globalne wskaźniki do macierzy (dynamicznie alokowane) ---
 
 // Macierze A i B wczytane przez proces 0
@@ -212,7 +211,7 @@ int main(int argc, char** argv) {
     int row = rank / PP; // Wiersz procesu w siatce PPxPP
     int col = rank % PP; // Kolumna procesu w siatce PPxPP
     int tag = 101; // Tag dla wiadomości MPI
-    int blockSize = N / PP; // Rozmiar boku bloku lokalnego
+    int blockSize = N / PP; // Rozmiar boku bloku lokalnego`
     int localSize = blockSize * blockSize; // Liczba elementów w bloku lokalnym
 
     // --- Alokacja lokalnych macierzy dla wszyzstkich procesów ---
@@ -324,12 +323,10 @@ int main(int argc, char** argv) {
     for (int kk = 0; kk < PP; kk++) {
         // Krok 1: Mnożenie lokalnych bloków C += A * B 
         for (int i = 0; i < blockSize; i++) {
-            for (int j = 0; j < blockSize; j++) {
-                double sum_cij = 0.0;
-                for (int k = 0; k < blockSize; k++) {
-                    sum_cij += psa[i][k] * psb[k][j];
+            for (int k = 0; k < blockSize; k++) {
+                for (int j = 0; j < blockSize; j++) {
+                    c[i][j] += psa[i][k] * psb[k][j];
                 }
-                 c[i][j] += sum_cij; 
             }
         }
 
@@ -410,9 +407,8 @@ int main(int argc, char** argv) {
         // printf("Rozpoczynanie obliczeń sekwencyjnych dla weryfikacji...\n");
         start_cSek = MPI_Wtime();
         for (int i = 0; i < N; i++){
-            for (int j = 0; j < N; j++) {
-                cSek[i][j] = 0.0;
-                for (int k = 0; k < N; k++) {
+            for (int k = 0; k < N; k++) {
+                for (int j = 0; j < N; j++) {
                     cSek[i][j] += rawA[i][k] * rawB[k][j];
                 }
             }
