@@ -364,12 +364,25 @@ int main(int argc, char** argv) {
                0, MPI_COMM_WORLD);                    // Proces root - my używamy rank 0
 
 
+
+
     // --- Rank 0: Rekonstrukcja macierzy i weryfikacja ---
     if (rank == 0) {
         end_cGlob = MPI_Wtime(); // Zakończenie pomiaru czasy
         // printf("Algorytm Cannona zakończony.\n");
-        // printf("Rekonstrukcja macierzy wynikowej cGlob...\n");
+        // printf("Rekonstrukcja macierzy wynikowej cGlob...\n")
+        freeMatrix(rawA); 
+        freeMatrix(rawB);
 
+    }
+    // --- Czyszczenie danych ---
+    // Zwalniamy macierze dla wszystkich procesów
+    freeMatrix(a);
+    freeMatrix(b);
+    freeMatrix(c);
+    freeMatrix(aa);
+    freeMatrix(bb);
+    if (rank == 0){
         // Alokacja pomocniczej tablicy do rekonstrukcji cGlob;
         double **Ctemp = allocateMatrix(N, N);
          if (!Ctemp) {
@@ -399,6 +412,7 @@ int main(int argc, char** argv) {
         // Skopiuj poprawnie zrekonstruowaną macierz z Ctemp do cGlob
         memcpy(cGlob[0], Ctemp[0], N * N * sizeof(double));
         freeMatrix(Ctemp); 
+
         // printf("Rekonstrukcja zakończona.\n");
 
         // --- Weryfikacja ---
@@ -434,26 +448,10 @@ int main(int argc, char** argv) {
         } else {
             printf("Weryfikacja zakończona: Znaleziono %d błędów w wynikach. Maksymalna różnica: %e\n", errors, max_diff);
         }
-    } 
 
-    // --- Czyszczenie danych ---
-    // Zwalniamy macierze dla wszystkich procesów
-    freeMatrix(a);
-    freeMatrix(b);
-    freeMatrix(c);
-    freeMatrix(aa);
-    freeMatrix(bb);
-
-    // Zwalnianie macierzy znajdujących się w procesie o ranku 0
-    if (rank == 0) {
-        // printf("Zwalnianie pamięci (rank 0)...\n");
-        freeMatrix(rawA); 
-        freeMatrix(rawB); 
         freeMatrix(cGlob);
         freeMatrix(cSek);
-        // printf("Zwalnianie pamięci zakończone.\n");
-        // printf("Program MPI zakończony poprawnie!\n");
-    }
+    } 
 
     MPI_Finalize();
     return 0;
