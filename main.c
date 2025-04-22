@@ -303,9 +303,6 @@ int main(int argc, char** argv) {
         MPI_Recv(a[0], localSize, MPI_DOUBLE, 0, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         MPI_Recv(b[0], localSize, MPI_DOUBLE, 0, tag + 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
-
-    // --- Synchronizacja przed rozpoczęciem obliczeń---
-    MPI_Barrier(MPI_COMM_WORLD);
     
     // Zerowanie macierzy wynikowej c  
     memset(c[0], 0, localSize * sizeof(double)); 
