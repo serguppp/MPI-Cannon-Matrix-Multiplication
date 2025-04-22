@@ -32,8 +32,8 @@ int main(int argc, char **argv) {
     printf("Pliki otwarte poprawnie, zapisuję dane\n");
 
     // Zapis danych do plików
-    for (int i = 0;  i < 2000; i++) {
-        for (int j = 0; j < 2000; j++) {
+    for (int i = 0;  i < 4008; i++) {
+        for (int j = 0; j < 4008; j++) {
             fprintf(plik, "%10.2lf ", (double)i + j);
             fprintf(plik2, "%10.2lf ", (double)i + j);
         }

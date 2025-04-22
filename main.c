@@ -5,9 +5,9 @@
 #include <math.h>
 #include <string.h>
 
-#define N 2000 // Rozmiar macierzy
-#define PP 5   // Pierwiastek z liczby procesów
-#define P 25   // Liczba procesów
+#define N 4008 // Rozmiar macierzy
+#define PP 6   // Pierwiastek z liczby procesów
+#define P 36   // Liczba procesów
 
 // --- Globalne wskaźniki do macierzy (dynamicznie alokowane) ---
 
@@ -368,8 +368,6 @@ int main(int argc, char** argv) {
         end_cGlob = MPI_Wtime(); // Zakończenie pomiaru czasy
         // printf("Algorytm Cannona zakończony.\n");
         // printf("Rekonstrukcja macierzy wynikowej cGlob...\n")
-        freeMatrix(rawA); 
-        freeMatrix(rawB);
 
     }
     // --- Czyszczenie danych ---
@@ -445,7 +443,8 @@ int main(int argc, char** argv) {
         } else {
             printf("Weryfikacja zakończona: Znaleziono %d błędów w wynikach. Maksymalna różnica: %e\n", errors, max_diff);
         }
-
+        freeMatrix(rawA); 
+        freeMatrix(rawB);
         freeMatrix(cGlob);
         freeMatrix(cSek);
     } 
