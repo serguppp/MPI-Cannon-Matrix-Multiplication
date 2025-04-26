@@ -6,10 +6,8 @@ int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
 
     FILE *plik, *plik2;
-    int i, j;
 
     // Określenie ścieżki w zależności od systemu operacyjnego
-    // Info: ze względu na bug kompilatora nie mogę zrobić ścieżki relatywnej, więc póki co jest tylko dla mnie
     #ifdef _WIN32  // Windows
         const char *path1 = "matrix1.txt";
         const char *path2 = "matrix2.txt";
@@ -34,8 +32,8 @@ int main(int argc, char **argv) {
     printf("Pliki otwarte poprawnie, zapisuję dane\n");
 
     // Zapis danych do plików
-    for (i = 0; i < 2000; i++) {
-        for (j = 0; j < 2000; j++) {
+    for (int i = 0;  i < 4008; i++) {
+        for (int j = 0; j < 4008; j++) {
             fprintf(plik, "%10.2lf ", (double)i + j);
             fprintf(plik2, "%10.2lf ", (double)i + j);
         }
